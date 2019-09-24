@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- load jQuery -->
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+    <script src="https://code.highcharts.com/stock/highstock.js"></script>
+    <script src="https://code.highcharts.com/stock/modules/exporting.js"></script>
+    <script src="https://code.highcharts.com/highcharts-3d.js"></script>
+    <script src="https://code.highcharts.com/stock/modules/export-data.js"></script>
+    <title>Anomaly detection</title>
+    <link rel="shortcut icon" href="/favicon.ico"/>
+    <link rel="bookmark" href="/favicon.ico" type="image/x-icon"/>
+</head>
+
+<body>
+<form method="post">
+    eps: <input type="text" id="a" name="a"><br>
+    <p>result: <span id='result'></span></p>
+</form>
+<input type="button" onclick="AjaxSubmit();" value="修改 DBSCAN eps">
+<script>
+    function AjaxSubmit() {
+        var a = $("#a").val();
+        $.ajax({
+            url: 'deal_post/',
+            type: 'POST',
+            data: {'para1': a, 'para2': 8001},
+            success: function (result_data) {
+                if (result_data != null) {
+                    var anomaly = JSON.parse(result_data['anomaly']),
+                        normal = JSON.parse(result_data['normal']);
+                    console.log(anomaly);
+                    console.log(normal);
+                    anomaly_data = anomaly;
+                    normal_data = normal;
+                    chart.redraw();
+                }
+            },
+        })
+    }
+</script>
+
+<div id="container" style="min-width: 310px; height: 400px;margin: 0 auto" class="border"></div>
+<script>
+    var X_ipca ={{ X_ipca|safe }},
+        //db_lable = {{ db_label|length}};// 测试后台是否正确传值
+        db_lable ={{ db_label|safe }},
+        anomaly_data = {{ anomaly_data|safe }},
+        normal_data ={{ normal_data|safe }};
+    // Give the points a 3D feel by adding a radial gradient
+    Highcharts.setOptions({
+        colors: Highcharts.getOptions().colors.map(function (color) {
+            return {
+                radialGradient: {
+                    cx: 0.4,
+                    cy: 0.3,
+                    r: 0.5
+                },
+                stops: [
+                    [0, color],
+                    [1, Highcharts.Color(color).brighten(-0.2).get('rgb')]
+                ]
+            };
+        })
+    });
+    var x_list = [];
+    // Set up the chart
+    var chart = new Highcharts.Chart({
+        chart: {
+            renderTo: 'container',
+            margin: 100,
+            type: 'scatter3d',
+            animation: false,
+            options3d: {
+                enabled: true,
+                alpha: 10,
+                beta: 30,
+                depth: 250,
+                viewDistance: 5,
+                fitToPlot: false,
+                frame: {
+                    bottom: {size: 1, color: 'rgba(0,0,0,0.02)'},
+                    back: {size: 1, color: 'rgba(0,0,0,0.04)'},
+                    side: {size: 1, color: 'rgba(0,0,0,0.06)'}
+                }
+            }
+        },
+        credits: {
+            enabled: false
+        },
+        title: {
+            text: 'Metric scatter'
+        },
+        subtitle: {
+            text: 'Click and drag the plot area to rotate in space'
+        },
+        plotOptions: {
+            scatter3d: {
+                width: 10,
+                height: 10,
+                depth: 10,
+                events: {
+                    click: function (event) {
+                        //alert('x:' + event.point.x + 'y:' + event.point.y + 'z:' + event.point.z);
+                        x_list.push([event.point.x, event.point.y, event.point.z]);
+                        alert(x_list.length);
+                    }
+                }
+            }
+        },
+        yAxis: {
+            min: -5,
+            max: 5,
+            title: null
+        },
+        xAxis: {
+            min: -5,
+            max: 5,
+            gridLineWidth: 1
+        },
+        zAxis: {
+            min: -5,
+            max: 5,
+            showFirstLabel: false
+        },
+        legend: {
+            enabled: false
+        },
+        colorAxis: [{}, {
+            minColor: '#be1e0e',
+            maxColor: '#06AD50',
+        }],
+        series: [{
+            name: 'Anomaly data',
+            //colorByPoint: true,
+            data: anomaly_data,
+            color: db_lable == -1 ? '#06AD50' : (db_lable == 0 ? '#EFB145' : '#be1e0e')
+        }, {
+            name: 'Normal data',
+            data: normal_data,
+            color: '#06AD50'
+        }
+        ]
+    });
+
+
+    // Add mouse and touch events for rotation
+    (function (H) {
+        function dragStart(eStart) {
+            eStart = chart.pointer.normalize(eStart);
+
+            var posX = eStart.chartX,
+                posY = eStart.chartY,
+                alpha = chart.options.chart.options3d.alpha,
+                beta = chart.options.chart.options3d.beta,
+                sensitivity = 5,  // lower is more sensitive
+                handlers = [];
+
+            function drag(e) {
+                // Get e.chartX and e.chartY
+                e = chart.pointer.normalize(e);
+
+                chart.update({
+                    chart: {
+                        options3d: {
+                            alpha: alpha + (e.chartY - posY) / sensitivity,
+                            beta: beta + (posX - e.chartX) / sensitivity
+                        }
+                    }
+                }, undefined, undefined, false);
+            }
+
+            function unbindAll() {
+                handlers.forEach(function (unbind) {
+                    if (unbind) {
+                        unbind();
+                    }
+                });
+                handlers.length = 0;
+            }
+
+            handlers.push(H.addEvent(document, 'mousemove', drag));
+            handlers.push(H.addEvent(document, 'touchmove', drag));
+
+
+            handlers.push(H.addEvent(document, 'mouseup', unbindAll));
+            handlers.push(H.addEvent(document, 'touchend', unbindAll));
+        }
+
+        H.addEvent(chart.container, 'mousedown', dragStart);
+        H.addEvent(chart.container, 'touchstart', dragStart);
+    }(Highcharts));
+
+</script>
+
+
+<div id="livedatacontainer" style="min-width: 310px; height: 400px;margin: 0 auto" class="border"></div>
+<script>
+    var live_data = {{ live_data|safe }};
+    var live_data2 = {{ live_data|safe }};
+    //console.log(live_data);
+    var min_num = 0, max_num_threshod = 43;
+    // Create the chart
+    Highcharts.stockChart('livedatacontainer', {
+        chart: {
+            events: {
+                load: function () {
+
+                    // set up the updating of the chart each second
+                    var series = this.series[0];
+                    var series1 = this.series[1];
+                    setInterval(function () {
+                        var x = (new Date()).getTime(), // current time
+                            y = live_data[live_data.length - 1][1],
+                            y1 = live_data[live_data.length - 1][2];
+
+                        // add data anomaly label
+
+                        series.addPoint([x, y], true, true);
+                        series1.addPoint([x, y1], true, true);
+                        live_data.splice(-1, 1);
+                    }, 1000);
+                }
+            }
+        },
+
+        time: {
+            useUTC: false
+        },
+
+        rangeSelector: {
+            buttons: [{
+                count: 1,
+                type: 'minute',
+                text: '1M'
+            }, {
+                count: 5,
+                type: 'minute',
+                text: '5M'
+            }, {
+                type: 'all',
+                text: 'All'
+            }],
+            inputEnabled: false,
+            selected: 0
+        },
+        credits: {
+            enabled: false
+        },
+        title: {
+            text: 'Live data'
+        },
+
+        exporting: {
+            enabled: false
+        },
+
+        series: [{
+            name: 'Actual value',
+            data: (function () {
+                // generate an array of random data
+                var data = [],
+                    time = (new Date()).getTime(),
+                    i;
+
+                for (i = -999; i <= 0; i += 1) {
+                    data.push([
+                        time + i * 1000,
+                        live_data[live_data.length - 1][1]
+                    ]);
+                    live_data.slice(-1, 1);
+                }
+                return data;
+            }())
+        }, {
+            name: 'Predict value',
+            data: (function () {
+                var data2 = [],
+                    time = (new Date()).getDate(),
+                    i;
+                for (i = -999; i <= 0; i += 1) {
+                    data2.push([
+                        time + i * 1000,
+                        live_data[live_data2.length - 1][2] + 1
+                    ]);
+                    live_data2.slice(-1, 1);
+                }
+                return data2;
+            }())
+        }
+        ],
+
+        annotations: [{
+            labels: [{
+                point: 'max',
+                tex: 'Max'
+            }, {
+                point: 'min',
+                text: 'Min',
+                backgroundColor: 'white'
+            }]
+        }]
+    });
+</script>
+<!---->
+</body>
+</html>
